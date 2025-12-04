@@ -1,6 +1,7 @@
 #![no_std]
 #![no_main]
 
+mod actuator;
 mod fmt;
 
 #[cfg(not(feature = "defmt"))]
@@ -8,120 +9,21 @@ use panic_halt as _;
 #[cfg(feature = "defmt")]
 use {defmt_rtt as _, panic_probe as _};
 
+use actuator::{Pq12P, SimplePq12P};
 use embassy_executor::Spawner;
 use embassy_stm32::{
     Config,
-    adc::{Adc, AdcChannel, AnyAdcChannel, Instance, SampleTime},
+    adc::{Adc, AdcChannel, SampleTime},
     gpio::{Level, Output, OutputType, Speed},
-    peripherals::{ADC1, TIM3},
+    peripherals::TIM3,
     time::khz,
     timer::{
-        Ch2, GeneralInstance4Channel,
-        simple_pwm::{PwmPin, SimplePwm, SimplePwmChannel},
+        Ch2,
+        simple_pwm::{PwmPin, SimplePwm},
     },
 };
 use embassy_time::Timer;
 use fmt::info;
-
-struct Actuator<'a, T: GeneralInstance4Channel, C: Instance> {
-    pub vref_position_upper: f32,
-    pub vref_position_lower: f32,
-    pub pwm: SimplePwmChannel<'a, T>,
-    pub dir_select: Output<'a>,
-    pub adc_pin: AnyAdcChannel<C>,
-}
-
-impl<'a, T: GeneralInstance4Channel, C: Instance> Actuator<'a, T, C> {
-    const STROKE_LENGTH: f32 = 20.0;
-    const ADC_VREF: f32 = 3.3;
-    const ADC_MAX_RAW: u16 = 4096;
-
-    pub fn new(
-        vref_position_upper: f32,
-        vref_position_lower: f32,
-        pwm: SimplePwmChannel<'a, T>,
-        dir_select: Output<'a>,
-        adc_pin: AnyAdcChannel<C>,
-    ) -> Self {
-        Actuator {
-            vref_position_upper,
-            vref_position_lower,
-            pwm,
-            dir_select,
-            adc_pin,
-        }
-    }
-
-    pub fn set_direction_in(&mut self) {
-        self.dir_select.set_low();
-    }
-
-    pub fn set_direction_out(&mut self) {
-        self.dir_select.set_high();
-    }
-
-    pub fn toggle_direction(&mut self) {
-        self.dir_select.toggle();
-    }
-
-    pub fn set_speed(&mut self, percent: u8) {
-        self.pwm.set_duty_cycle_percent(percent);
-    }
-
-    pub fn read_position_v(&mut self, adc: &mut Adc<'_, C>) -> f32 {
-        let raw_reading = adc.blocking_read(&mut self.adc_pin);
-        let pos_as_v = (raw_reading as f32 / Self::ADC_MAX_RAW as f32) * Self::ADC_VREF;
-        pos_as_v
-    }
-
-    pub fn read_position_mm(&mut self, adc: &mut Adc<'_, C>) -> f32 {
-        let pos_as_v = self.read_position_v(adc);
-        let pos_in_mm = Self::STROKE_LENGTH * (pos_as_v - self.vref_position_lower)
-            / (self.vref_position_upper - self.vref_position_lower);
-        pos_in_mm
-    }
-
-    pub fn move_to_pos(
-        &mut self,
-        target_position_mm: f32,
-        duty_cycle_percent: u8,
-        adc: &mut Adc<'_, C>,
-    ) {
-        const TOLERANCE_MM: f32 = 0.1;
-
-        let target = target_position_mm.clamp(1.0, 19.0);
-        let mut current = self.read_position_mm(adc);
-
-        info!("Target Pos: {}, Current Pos: {}", target, current);
-
-        let direction = if current + TOLERANCE_MM < target {
-            self.set_direction_out();
-            Some(1.0_f32)
-        } else if current - TOLERANCE_MM > target {
-            self.set_direction_in();
-            Some(-1.0_f32)
-        } else {
-            None
-        };
-
-        if direction.is_none() {
-            self.set_speed(0);
-            return;
-        }
-
-        self.set_speed(duty_cycle_percent);
-
-        loop {
-            current = self.read_position_mm(adc);
-
-            if (current - target).abs() <= TOLERANCE_MM {
-                info!("Reached target window.");
-                break;
-            }
-        }
-        self.set_speed(0);
-    }
-}
 
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
@@ -141,6 +43,7 @@ async fn main(_spawner: Spawner) {
         config.rcc.sys = Sysclk::PLL1_R;
     }
     let p = embassy_stm32::init(config);
+
     info!("Peripherals initialized.");
 
     let mut adc = Adc::new(p.ADC1);
@@ -167,8 +70,7 @@ async fn main(_spawner: Spawner) {
 
     let mut led = Output::new(p.PA5, Level::High, Speed::Low);
 
-    let mut actuator: Actuator<'_, TIM3, ADC1> =
-        Actuator::new(3.3, 0.0, ch2, motor_dir_pin, p.PA0.degrade_adc());
+    let mut actuator = SimplePq12P::new(3.3, 0.0, ch2, motor_dir_pin, p.PA0.degrade_adc());
 
     info!("Entering test loop.");
     loop {

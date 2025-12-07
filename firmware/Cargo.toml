@@ -1,0 +1,4 @@
+[workspace]
+members = ["actuation", "pq12p_actuator"]
+
+resolver = "2"

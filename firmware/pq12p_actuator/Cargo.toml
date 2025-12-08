@@ -7,4 +7,5 @@ edition = "2024"
 embassy-stm32 = { version = "0.4.0", features = [
     "stm32g474re",
     "unstable-pac",
+    "single-bank",
 ] }

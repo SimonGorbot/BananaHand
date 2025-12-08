@@ -1,9 +1,38 @@
+//! High-level driver for an Actuonix PQ12-P linear actuator driven by a TI DRV8876 H-bridge,
+//! built on top of `embassy-stm32` for `no_std` environments.
+//!
+//! # Overview
+//!
+//! This crate provides two actuator abstractions for the PQ12-P + DRV8876 combination:
+//!
+//! - [`Pq12P`] – uses *dual-PWM* drive (DRV8876 in 2×PWM mode, `IN1`/`IN2` both PWM-capable).
+//!   Exposes explicit `coast`, `brake`, `move_out`, and `move_in` helpers, plus current sensing
+//!   via the DRV8876 IPROPI pin.
+//! - [`SimplePq12P`] – uses a *single PWM* output plus a direction GPIO. Provides simple
+//!   open-loop speed control and basic position feedback using the PQ12-P’s internal potentiometer,
+//!   including a blocking [`SimplePq12P::move_to_pos`] primitive in millimetres.
+//!
+//! Both drivers are generic over `embassy-stm32` peripheral instances:
+//!
+//! - PWM: [`SimplePwmChannel`] on a [`GeneralInstance4Channel`] timer.
+//! - ADC: [`Adc`] with [`AnyAdcChannel`] for position and/or current feedback.
+//!
+//! # Hardware assumptions
+//!
+//! - DRV8876 is wired in either:
+//!   - 2×PWM mode (`IN1`/`IN2` both driven by timers), or
+//!   - 1×PWM + direction GPIO mode.
+//! - `nSLEEP` is held high during normal operation.
+//! - ADC reference is 3.3 V and 12-bit (0–4095), matching `ADC_VREF` and `ADC_MAX_RAW`.
+//! - The PQ12-P feedback pin is connected to an ADC channel, and (for [`Pq12P`]) the DRV8876
+//!   IPROPI pin is also connected to an ADC channel if current measurement is desired.
+
 #![no_std]
 
 use embassy_stm32::{
     adc::{Adc, AnyAdcChannel, Instance},
     gpio::Output,
-    timer::{GeneralInstance4Channel, simple_pwm::SimplePwmChannel},
+    timer::{simple_pwm::SimplePwmChannel, GeneralInstance4Channel},
 };
 
 /// Actuator Struct for the PQ12-P linear actuator paired with a DRV8876 for driving in 2 x PWM input mode.
@@ -15,18 +44,12 @@ use embassy_stm32::{
 ///
 /// Motor / H-bridge behaviour:
 ///
-/// | IN1 | IN2 | OUT1 | OUT2 | Description                         |
+/// | IN1 | IN2 | OUT1 | OUT2 | Description                          |
 /// |-----|-----|------|------|--------------------------------------|
-/// | 0   | 0   | Hi-Z | Hi-Z | Coast (both outputs high-impedance) |
-/// | 0   | 1   |  L   |  H   | Reverse drive (OUT2 → OUT1)         |
-/// | 1   | 0   |  H   |  L   | Forward drive (OUT1 → OUT2)         |
+/// | 0   | 0   | Hi-Z | Hi-Z | Coast (both outputs high-impedance)  |
+/// | 0   | 1   |  L   |  H   | Reverse drive (Plunger In)           |
+/// | 1   | 0   |  H   |  L   | Forward drive (Plunger Out)          |
 /// | 1   | 1   |  L   |  L   | Brake (slow-decay, both low-side on) |
-///
-/// Notes:
-/// - Use PWM on one input with the other held low for drive + coast.
-/// - Use PWM on one input with the other held high for drive + brake.
-/// - `nSLEEP = 0` forces all outputs Hi-Z regardless of IN1/IN2.
-/// - Mode selection is latched at startup via PMODE.
 pub struct Pq12P<'a, T: GeneralInstance4Channel, C: Instance> {
     vref_position: (f32, f32),
     pwm_1: SimplePwmChannel<'a, T>,
@@ -35,10 +58,13 @@ pub struct Pq12P<'a, T: GeneralInstance4Channel, C: Instance> {
     i_adc: AnyAdcChannel<C>,
 }
 
+// TODO: Add doc comments.
+
 impl<'a, T: GeneralInstance4Channel, C: Instance> Pq12P<'a, T, C> {
     pub const STROKE_LENGTH: f32 = 20.0;
     const ADC_MAX_RAW: u16 = 4096;
     const ADC_VREF: f32 = 3.3;
+    const R_IPROPI: f32 = 2490.0;
 
     pub fn new(
         vref_position: (f32, f32),
@@ -66,7 +92,7 @@ impl<'a, T: GeneralInstance4Channel, C: Instance> Pq12P<'a, T, C> {
         self.pwm_2.set_duty_cycle_fully_on();
     }
 
-    pub fn move_in(&mut self, duty_cycle_percent: u8) {
+    pub fn move_out(&mut self, duty_cycle_percent: u8) {
         let dcp: u8;
         if duty_cycle_percent > 100 {
             dcp = 100;
@@ -77,7 +103,7 @@ impl<'a, T: GeneralInstance4Channel, C: Instance> Pq12P<'a, T, C> {
         self.pwm_2.set_duty_cycle_fully_off();
     }
 
-    pub fn move_out(&mut self, duty_cycle_percent: u8) {
+    pub fn move_in(&mut self, duty_cycle_percent: u8) {
         let dcp: u8;
         if duty_cycle_percent > 100 {
             dcp = 100;
@@ -86,6 +112,17 @@ impl<'a, T: GeneralInstance4Channel, C: Instance> Pq12P<'a, T, C> {
         }
         self.pwm_1.set_duty_cycle_fully_off();
         self.pwm_2.set_duty_cycle_percent(dcp);
+    }
+
+    // TODO: Allow non-snake case name
+    pub fn read_current_V(&mut self, adc: &mut Adc<'_, C>) -> f32 {
+        let raw_reading = adc.blocking_read(&mut self.i_adc);
+        (raw_reading as f32 / Self::ADC_MAX_RAW as f32) * Self::ADC_VREF
+    }
+
+    pub fn read_current_mA(&mut self, adc: &mut Adc<'_, C>) -> f32 {
+        let volts = self.read_current_V(adc);
+        (volts / Self::R_IPROPI) * 1e6
     }
 
     pub fn read_position_v(&mut self, adc: &mut Adc<'_, C>) -> f32 {

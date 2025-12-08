@@ -44,7 +44,7 @@ def parse_frame(frame: bytes) -> list[float] | None:
 
 
 def main():
-    ser = serial.Serial("/dev/ttyACM0", baudrate=115200, timeout=0.5)
+    ser = serial.Serial("/dev/ttyACM0", baudrate=576000, timeout=0.5)
     seq = 0
     try:
         while True:

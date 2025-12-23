@@ -35,7 +35,6 @@
 use embassy_stm32::{
     Peri,
     adc::{Adc, AnyAdcChannel, Instance, RxDma, SampleTime},
-    gpio::Output,
     timer::{GeneralInstance4Channel, simple_pwm::SimplePwmChannel},
 };
 
@@ -83,6 +82,8 @@ impl<'a, T: GeneralInstance4Channel, C: Instance> Pq12P<'a, T, C> {
         }
     }
 
+    // === Movement Methods ===
+
     /// Set motor to coast (PWM1 = 0 PWM2 = 0).
     pub fn coast(&mut self) {
         self.pwm_1.set_duty_cycle_fully_off();
@@ -119,6 +120,8 @@ impl<'a, T: GeneralInstance4Channel, C: Instance> Pq12P<'a, T, C> {
         self.pwm_2.set_duty_cycle_percent(dcp);
     }
 
+    // === Async Sensor Reading Methods ===
+
     /// Read plunger position raw ADC value asynchronously.   
     pub async fn read_position_raw_async(
         &mut self,
@@ -153,24 +156,6 @@ impl<'a, T: GeneralInstance4Channel, C: Instance> Pq12P<'a, T, C> {
         dma: &mut Peri<'_, impl RxDma<C>>,
     ) -> f32 {
         let raw = self.read_position_raw_async(adc, dma).await;
-        (raw as f32) / (Self::ADC_MAX_RAW as f32) * Self::STROKE_LENGTH
-    }
-
-    /// Read plunger position raw ADC value blocking.     
-    pub fn read_position_raw_blocking(&mut self, adc: &mut Adc<'_, C>) -> u16 {
-        adc.blocking_read(&mut self.pos_adc)
-    }
-
-    #[allow(non_snake_case)]
-    /// Read plunger position as voltage asynchronously.
-    pub fn read_position_V_blocking(&mut self, adc: &mut Adc<'_, C>) -> f32 {
-        let raw = self.read_position_raw_blocking(adc);
-        (raw as f32 / Self::ADC_MAX_RAW as f32) * Self::ADC_VREF
-    }
-
-    /// Read plunger position in millimeters asynchronously.
-    pub fn read_position_mm_blocking(&mut self, adc: &mut Adc<'_, C>) -> f32 {
-        let raw = self.read_position_raw_blocking(adc);
         (raw as f32) / (Self::ADC_MAX_RAW as f32) * Self::STROKE_LENGTH
     }
 
@@ -212,30 +197,9 @@ impl<'a, T: GeneralInstance4Channel, C: Instance> Pq12P<'a, T, C> {
         (volts / Self::R_IPROPI) * 1e6
     }
 
-    /// Read current sense pin of DRV8876 as a raw ADC value blocking.
-    ///
-    /// *Note: The DRV8876 is only able to read current draw when the PWM signal is high.
-    /// As far as I am aware there is no way within embassy to synchronize ADC reads with a PWM timer.
-    /// This leads to readings littered with 0s when from when the PWM signal is low.
-    /// No filtering is done by the function*
-    pub fn read_current_raw_blocking(&mut self, adc: &mut Adc<'_, C>) -> u16 {
-        adc.blocking_read(&mut self.i_adc)
-    }
+    // === Async Motor Control Methods ===
 
-    /// Read current sense pin of DRV8876 as a mA value blocking.
-    ///
-    /// *Note: The DRV8876 is only able to read current draw when the PWM signal is high.
-    /// As far as I am aware there is no way within embassy to synchronize ADC reads with a PWM timer.
-    /// This leads to readings littered with 0s when from when the PWM signal is low.
-    /// No filtering is done by the function*
-    #[allow(non_snake_case)]
-    pub fn read_current_mA_blocking(&mut self, adc: &mut Adc<'_, C>) -> f32 {
-        let raw = self.read_current_raw_blocking(adc);
-        let volts = (raw as f32 / Self::ADC_MAX_RAW as f32) * Self::ADC_VREF;
-        (volts / Self::R_IPROPI) * 1e6
-    }
-
-    /// Command PQ12 to move to specified plunger location using a Bang-Bang Controller.
+    /// Command PQ12 to move to specified plunger location using a Bang-Bang Controller. Select end behaviour as coast or brake with `end_in_brake`.
     pub async fn move_to_position(
         &mut self,
         target_position_mm: f32,
@@ -271,5 +235,48 @@ impl<'a, T: GeneralInstance4Channel, C: Instance> Pq12P<'a, T, C> {
         } else {
             self.coast();
         }
+    }
+
+    // === Blocking Sensor Reading Methods ===
+
+    /// Read plunger position raw ADC value blocking.     
+    pub fn read_position_raw_blocking(&mut self, adc: &mut Adc<'_, C>) -> u16 {
+        adc.blocking_read(&mut self.pos_adc)
+    }
+
+    #[allow(non_snake_case)]
+    /// Read plunger position as voltage blocking.
+    pub fn read_position_V_blocking(&mut self, adc: &mut Adc<'_, C>) -> f32 {
+        let raw = self.read_position_raw_blocking(adc);
+        (raw as f32 / Self::ADC_MAX_RAW as f32) * Self::ADC_VREF
+    }
+
+    /// Read plunger position in millimeters blocking.
+    pub fn read_position_mm_blocking(&mut self, adc: &mut Adc<'_, C>) -> f32 {
+        let raw = self.read_position_raw_blocking(adc);
+        (raw as f32) / (Self::ADC_MAX_RAW as f32) * Self::STROKE_LENGTH
+    }
+
+    /// Read current sense pin of DRV8876 as a raw ADC value blocking.
+    ///
+    /// *Note: The DRV8876 is only able to read current draw when the PWM signal is high.
+    /// As far as I am aware there is no way within embassy to synchronize ADC reads with a PWM timer.
+    /// This leads to readings littered with 0s when from when the PWM signal is low.
+    /// No filtering is done by the function*
+    pub fn read_current_raw_blocking(&mut self, adc: &mut Adc<'_, C>) -> u16 {
+        adc.blocking_read(&mut self.i_adc)
+    }
+
+    /// Read current sense pin of DRV8876 as a mA value blocking.
+    ///
+    /// *Note: The DRV8876 is only able to read current draw when the PWM signal is high.
+    /// As far as I am aware there is no way within embassy to synchronize ADC reads with a PWM timer.
+    /// This leads to readings littered with 0s when from when the PWM signal is low.
+    /// No filtering is done by the function*
+    #[allow(non_snake_case)]
+    pub fn read_current_mA_blocking(&mut self, adc: &mut Adc<'_, C>) -> f32 {
+        let raw = self.read_current_raw_blocking(adc);
+        let volts = (raw as f32 / Self::ADC_MAX_RAW as f32) * Self::ADC_VREF;
+        (volts / Self::R_IPROPI) * 1e6
     }
 }

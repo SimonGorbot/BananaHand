@@ -1,4 +1,4 @@
 [workspace]
-members = ["actuation", "pq12p_actuator"]
+members = ["actuation", "pq12p_actuator", "test/actuation_lib_test"]
 
 resolver = "2"

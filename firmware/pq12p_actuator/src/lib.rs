@@ -37,6 +37,7 @@ use embassy_stm32::{
     adc::{Adc, AnyAdcChannel, Instance, RxDma, SampleTime},
     timer::{GeneralInstance4Channel, simple_pwm::SimplePwmChannel},
 };
+use embassy_time::{Duration, Ticker};
 
 /// Actuator Struct for the PQ12-P linear actuator paired with a DRV8876 for driving in 2 x PWM input mode.
 ///
@@ -173,7 +174,7 @@ impl<'a, T: GeneralInstance4Channel, C: Instance> Pq12P<'a, T, C> {
         let mut reading = [0u16];
         adc.read(
             dma.reborrow(),
-            [(&mut self.pos_adc, SampleTime::CYCLES12_5)].into_iter(),
+            [(&mut self.i_adc, SampleTime::CYCLES12_5)].into_iter(),
             &mut reading,
         )
         .await;
@@ -209,6 +210,7 @@ impl<'a, T: GeneralInstance4Channel, C: Instance> Pq12P<'a, T, C> {
         dma: &mut Peri<'_, impl RxDma<C>>,
     ) {
         const TOLERANCE_MM: f32 = 0.1;
+        const CONTROL_LOOP_HZ: u64 = 200;
 
         let target_pos = target_position_mm.clamp(1.0, Self::STROKE_LENGTH - 1.0);
         let mut current_pos = self.read_position_mm_async(adc, dma).await;
@@ -226,8 +228,10 @@ impl<'a, T: GeneralInstance4Channel, C: Instance> Pq12P<'a, T, C> {
             return;
         }
 
+        let mut ticker: Ticker = Ticker::every(Duration::from_hz(CONTROL_LOOP_HZ));
         while (current_pos - target_pos).abs() > TOLERANCE_MM {
             current_pos = self.read_position_mm_async(adc, dma).await;
+            // ticker.next().await;
         }
 
         if end_in_brake == true {

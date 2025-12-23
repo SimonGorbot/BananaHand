@@ -21,6 +21,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "actuation_lib_test"
+version = "0.1.0"
+dependencies = [
+ "cortex-m",
+ "cortex-m-rt",
+ "defmt 1.0.1",
+ "defmt-rtt",
+ "embassy-executor",
+ "embassy-futures",
+ "embassy-stm32",
+ "embassy-sync",
+ "embassy-time",
+ "panic-halt",
+ "panic-probe",
+ "pq12p_actuator",
+]
+
+[[package]]
 name = "aligned"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -637,6 +655,7 @@ name = "pq12p_actuator"
 version = "0.1.0"
 dependencies = [
  "embassy-stm32",
+ "embassy-time",
 ]
 
 [[package]]

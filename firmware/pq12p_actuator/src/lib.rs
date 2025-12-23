@@ -163,7 +163,7 @@ impl<'a, T: GeneralInstance4Channel, C: Instance> Pq12P<'a, T, C> {
     ///
     /// *Note: The DRV8876 is only able to read current draw when the PWM signal is high.
     /// As far as I am aware there is no way within embassy to synchronize ADC reads with a PWM timer.
-    /// This leads to readings littered with 0s when from when the PWM signal is low.
+    /// This leads to readings littered with 0s from when the PWM signal is low.
     /// No filtering is done by the function*    
     pub async fn read_current_raw_async(
         &mut self,
@@ -184,7 +184,7 @@ impl<'a, T: GeneralInstance4Channel, C: Instance> Pq12P<'a, T, C> {
     ///
     /// *Note: The DRV8876 is only able to read current draw when the PWM signal is high.
     /// As far as I am aware there is no way within embassy to synchronize ADC reads with a PWM timer.
-    /// This leads to readings littered with 0s when from when the PWM signal is low.
+    /// This leads to readings littered with 0s from when the PWM signal is low.
     /// No filtering is done by the function*    
     #[allow(non_snake_case)]
     pub async fn read_current_mA_async(
@@ -261,7 +261,7 @@ impl<'a, T: GeneralInstance4Channel, C: Instance> Pq12P<'a, T, C> {
     ///
     /// *Note: The DRV8876 is only able to read current draw when the PWM signal is high.
     /// As far as I am aware there is no way within embassy to synchronize ADC reads with a PWM timer.
-    /// This leads to readings littered with 0s when from when the PWM signal is low.
+    /// This leads to readings littered with 0s from when the PWM signal is low.
     /// No filtering is done by the function*
     pub fn read_current_raw_blocking(&mut self, adc: &mut Adc<'_, C>) -> u16 {
         adc.blocking_read(&mut self.i_adc)
@@ -271,7 +271,7 @@ impl<'a, T: GeneralInstance4Channel, C: Instance> Pq12P<'a, T, C> {
     ///
     /// *Note: The DRV8876 is only able to read current draw when the PWM signal is high.
     /// As far as I am aware there is no way within embassy to synchronize ADC reads with a PWM timer.
-    /// This leads to readings littered with 0s when from when the PWM signal is low.
+    /// This leads to readings littered with 0s from when the PWM signal is low.
     /// No filtering is done by the function*
     #[allow(non_snake_case)]
     pub fn read_current_mA_blocking(&mut self, adc: &mut Adc<'_, C>) -> f32 {

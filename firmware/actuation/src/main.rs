@@ -16,7 +16,7 @@ use fmt::info;
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
     let p = embassy_stm32::init(Default::default());
-    let mut led = Output::new(p.PB7, Level::High, Speed::Low);
+    let mut led = Output::new(p.PA5, Level::High, Speed::Low);
 
     loop {
         info!("Hello, World!");

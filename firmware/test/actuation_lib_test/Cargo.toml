@@ -37,18 +37,6 @@ name = "actuation_lib_test"
 test = false
 bench = false
 
-[profile.dev]
-debug = true
-lto = true
-opt-level = "z"
-incremental = true
-
-[profile.release]
-debug = false
-lto = true
-opt-level = "z"
-incremental = true
-
 [features]
 defmt = ["dep:defmt"]
 defmt-rtt = ["dep:defmt-rtt"]

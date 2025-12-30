@@ -99,26 +99,17 @@ impl<'a, T: GeneralInstance4Channel, C: Instance> Pq12P<'a, T, C> {
 
     /// Move PQ12 plunger out (PWM1 = DC% PWM2 = 0).
     pub fn move_out(&mut self, duty_cycle_percent: u8) {
-        let dcp: u8;
-        if duty_cycle_percent > 100 {
-            dcp = 100;
-        } else {
-            dcp = duty_cycle_percent;
-        }
-        self.pwm_1.set_duty_cycle_percent(dcp);
-        self.pwm_2.set_duty_cycle_fully_off();
+        let dcp = duty_cycle_percent.clamp(0, 100);
+        self.pwm_1.set_duty_cycle_fully_on();
+        self.pwm_2.set_duty_cycle_percent(100 - dcp);
     }
 
     /// Move PQ12 plunger in (PWM1 = 0 PWM2 = DC%).
     pub fn move_in(&mut self, duty_cycle_percent: u8) {
-        let dcp: u8;
-        if duty_cycle_percent > 100 {
-            dcp = 100;
-        } else {
-            dcp = duty_cycle_percent;
-        }
-        self.pwm_1.set_duty_cycle_fully_off();
-        self.pwm_2.set_duty_cycle_percent(dcp);
+        let dcp = duty_cycle_percent.clamp(0, 100);
+        self.pwm_1.set_duty_cycle_percent(100 - dcp);
+
+        self.pwm_2.set_duty_cycle_fully_on();
     }
 
     // === Async Sensor Reading Methods ===
@@ -209,7 +200,7 @@ impl<'a, T: GeneralInstance4Channel, C: Instance> Pq12P<'a, T, C> {
         adc: &mut Adc<'_, C>,
         dma: &mut Peri<'_, impl RxDma<C>>,
     ) {
-        const TOLERANCE_MM: f32 = 0.1;
+        const TOLERANCE_MM: f32 = 0.05;
         const CONTROL_LOOP_HZ: u64 = 200;
 
         let target_pos = target_position_mm.clamp(1.0, Self::STROKE_LENGTH - 1.0);
@@ -231,7 +222,7 @@ impl<'a, T: GeneralInstance4Channel, C: Instance> Pq12P<'a, T, C> {
         let mut ticker: Ticker = Ticker::every(Duration::from_hz(CONTROL_LOOP_HZ));
         while (current_pos - target_pos).abs() > TOLERANCE_MM {
             current_pos = self.read_position_mm_async(adc, dma).await;
-            // ticker.next().await;
+            ticker.next().await;
         }
 
         if end_in_brake == true {

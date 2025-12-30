@@ -200,7 +200,7 @@ impl<'a, T: GeneralInstance4Channel, C: Instance> Pq12P<'a, T, C> {
         adc: &mut Adc<'_, C>,
         dma: &mut Peri<'_, impl RxDma<C>>,
     ) {
-        const TOLERANCE_MM: f32 = 0.05;
+        const TOLERANCE_MM: f32 = 0.1;
         const CONTROL_LOOP_HZ: u64 = 200;
 
         let target_pos = target_position_mm.clamp(1.0, Self::STROKE_LENGTH - 1.0);

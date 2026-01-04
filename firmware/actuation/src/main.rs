@@ -10,7 +10,11 @@ use {defmt_rtt as _, panic_probe as _};
 
 use embassy_executor::Spawner;
 use embassy_stm32::{
-    adc::SampleTime, gpio::{Level, Output, Speed}, hrtim::{AdvancedChannel, AdvancedPwm, ChA, ComplementaryPwmPin, PwmPin}, lptim::pwm, peripherals::{ADC1, DMA1_CH1, HRTIM1, TIM1}, timer::{GeneralInstance4Channel, simple_pwm::{SimplePwm, SimplePwmChannel, SimplePwmChannels}}
+    adc::SampleTime,
+    gpio::{Level, Output, Speed},
+    hrtim::{AdvancedPwm, ChA, ComplementaryPwmPin, PwmPin},
+    peripherals::{ADC1, DMA1_CH1, HRTIM1, TIM1},
+    timer::{GeneralInstance4Channel, simple_pwm::SimplePwmChannel},
 };
 use embassy_time::{Duration, Ticker, Timer};
 use fmt::info;
@@ -106,7 +110,6 @@ pub struct MotorGoal {
     pub end_in_brake: bool,
 }
 
-
 #[embassy_executor::task]
 pub async fn motor_control_task(
     mut motors: [Pq12PDrive<'static, TIM1>; NUM_MOTORS],
@@ -184,10 +187,6 @@ async fn main(_spawner: Spawner) {
         None,
         None,
     );
-
-    
-
-    
 
     loop {
         info!("Hello, World!");

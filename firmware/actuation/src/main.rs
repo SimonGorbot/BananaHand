@@ -11,10 +11,6 @@ use {defmt_rtt as _, panic_probe as _};
 use embassy_executor::Spawner;
 use embassy_stm32::{
     Config,
-    gpio::Pin,
-    pac::{HRTIM1, hrtim},
-};
-use embassy_stm32::{
     gpio::{Level, Output, Speed},
     pac,
 };

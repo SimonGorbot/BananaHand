@@ -99,7 +99,7 @@ pub async fn adc_sampler_task(
     let mut ticker = Ticker::every(Duration::from_hz(400)); // sample faster than control
     loop {
         info!("ADC R Start");
-        // Read all 5 position channels in one shot
+        // Read all 2 position channels in one shot
         adc.read(
             dma.reborrow(),
             pos_ch.iter_mut().map(|ch| (ch, SampleTime::CYCLES12_5)),

@@ -2,6 +2,7 @@ use cobs::{encode, decode};
 
 pub const COBS_DELIM: u8 = 0x00;
 pub const MAX_FRAME: usize = 128;
+pub const PAYLOAD_LEN: usize = 32;
 
 // START/END no longer used with COBS framing (safe to delete)
 // pub const START_BYTE: u8 = 0xFF;
@@ -20,13 +21,8 @@ pub fn build_frame(msg_type: u8, positions: [f32; 8]) -> BuiltFrame {
     let mut body = [0u8; MAX_FRAME];
     let mut body_len = 0usize;
 
-    let payload_len = positions.len() * 4;
-
-    // body: [type][len][payload...][chk]
+    // body: [type][payload...][chk]
     body[body_len] = msg_type;
-    body_len += 1;
-
-    body[body_len] = payload_len as u8;
     body_len += 1;
 
     let payload_start = body_len;
@@ -37,7 +33,7 @@ pub fn build_frame(msg_type: u8, positions: [f32; 8]) -> BuiltFrame {
         body_len += 4;
     }
 
-    let chk = checksum(&body[payload_start..payload_start + payload_len]);
+    let chk = checksum(&body[payload_start..payload_start + PAYLOAD_LEN]);
     body[body_len] = chk;
     body_len += 1;
 
@@ -112,22 +108,21 @@ impl FrameParser {
         let dec_len = report.frame_size(); // :contentReference[oaicite:1]{index=1}
         self.enc_len = 0;
 
-        // decoded body: [type][len][payload...][chk]
+        // decoded body: [type][payload...][chk]
         if dec_len < 3 {
             defmt::error!("Frame too short");
             return None;
         }
 
         let msg_type = self.dec_buf[0];
-        let payload_len = self.dec_buf[1] as usize;
 
-        if dec_len != 2 + payload_len + 1 {
+        if dec_len != 1 + PAYLOAD_LEN + 1 {
             defmt::error!("Length mismatch");
             return None;
         }
 
-        let payload_start = 2;
-        let payload_end = payload_start + payload_len;
+        let payload_start = 1;
+        let payload_end = payload_start + PAYLOAD_LEN;
         let payload = &self.dec_buf[payload_start..payload_end];
 
         let chk = self.dec_buf[payload_end];

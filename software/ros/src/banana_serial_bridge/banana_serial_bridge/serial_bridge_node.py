@@ -14,6 +14,7 @@ from cobs import cobs  # pip install cobs
 
 COBS_DELIM = b"\x00"
 MSG_TYPE_POSITION = 0x01
+LENGTH = 32  # 8 floats * 4 bytes each
 
 MAX_ENC_FRAME = 512  # cap to avoid runaway buffer on noise
 
@@ -23,42 +24,34 @@ def checksum(data: bytes) -> int:
 
 
 def build_frame(msg_type: int, positions: List[float]) -> bytes:
-    # payload: N floats, little-endian
+    if len(positions) != 8:
+        raise ValueError(f"expected 8 floats, got {len(positions)}")
+
     payload = b"".join(struct.pack("<f", float(p)) for p in positions)
-    length = len(payload)  # bytes
+    if len(payload) != LENGTH:
+        raise ValueError(f"payload must be {LENGTH} bytes, got {len(payload)}")
+
     chk = checksum(payload)
 
-    # body: [type][len][payload][chk]
-    body = bytes([msg_type, length]) + payload + bytes([chk])
+    # body: [type][payload][chk]
+    body = bytes([msg_type]) + payload + bytes([chk])
 
-    # on-wire: COBS(body) + 0x00 delimiter
     return cobs.encode(body) + COBS_DELIM
 
 
 def parse_body(body: bytes) -> Optional[Tuple[int, List[float]]]:
-    """
-    body: [type][len][payload][chk]
-    returns (msg_type, positions) on success
-    """
-    if len(body) < 3:
+    # body: [type][payload][chk]
+    if len(body) != 1 + LENGTH + 1:
         return None
 
     msg_type = body[0]
-    length = body[1]
-
-    if len(body) != 2 + length + 1:
-        return None
-
-    payload = body[2 : 2 + length]
-    chk = body[2 + length]
+    payload = body[1 : 1 + LENGTH]
+    chk = body[1 + LENGTH]
 
     if checksum(payload) != chk:
         return None
 
-    if length % 4 != 0:
-        return None
-
-    positions = [struct.unpack("<f", payload[i : i + 4])[0] for i in range(0, length, 4)]
+    positions = [struct.unpack("<f", payload[i:i+4])[0] for i in range(0, LENGTH, 4)]
     return (msg_type, positions)
 
 

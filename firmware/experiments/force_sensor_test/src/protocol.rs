@@ -1,8 +1,8 @@
-use cobs::{encode, decode};
+use cobs::{decode, encode};
 
 pub const COBS_DELIM: u8 = 0x00;
 pub const MAX_FRAME: usize = 128;
-pub const PAYLOAD_LEN: usize = 16;
+pub const PAYLOAD_LEN: usize = 20;
 
 // START/END no longer used with COBS framing (safe to delete)
 // pub const START_BYTE: u8 = 0xFF;
@@ -17,7 +17,7 @@ pub struct BuiltFrame {
     pub len: usize,
 }
 
-pub fn build_frame(msg_type: u8, positions: [u16; 8]) -> BuiltFrame {
+pub fn build_frame(msg_type: u8, readings: [u16; 10]) -> BuiltFrame {
     let mut body = [0u8; MAX_FRAME];
     let mut body_len = 0usize;
 
@@ -27,8 +27,8 @@ pub fn build_frame(msg_type: u8, positions: [u16; 8]) -> BuiltFrame {
 
     let payload_start = body_len;
 
-    for p in positions {
-        let bytes = p.to_le_bytes();
+    for reading in readings {
+        let bytes = reading.to_le_bytes();
         body[body_len..body_len + 2].copy_from_slice(&bytes);
         body_len += 2;
     }
@@ -59,7 +59,7 @@ pub fn build_frame(msg_type: u8, positions: [u16; 8]) -> BuiltFrame {
 }
 
 pub enum MessageType {
-    PositionUpdate = 0x01,
+    ForceReadings = 0x01,
 }
 
 pub struct FrameParser {

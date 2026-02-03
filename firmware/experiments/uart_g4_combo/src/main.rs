@@ -1,0 +1,119 @@
+#![no_std]
+#![no_main]
+
+mod c0_reader;
+mod command_reader;
+mod config;
+mod fmt;
+mod position_reader;
+mod protocol;
+mod shared;
+mod telemetry_sender;
+
+#[cfg(not(feature = "defmt"))]
+use panic_halt as _;
+#[cfg(feature = "defmt")]
+use {defmt_rtt as _, panic_probe as _};
+
+use embassy_executor::Spawner;
+use embassy_stm32::bind_interrupts;
+use embassy_stm32::usart::{Config as UartConfig, Uart, UartRx};
+use embassy_stm32::{Config, adc::{Adc, SampleTime, AdcChannel}};
+use embassy_time::{Duration, Timer};
+
+use config::{COMMAND_COUNT, FORCE_COUNT, POSITION_COUNT};
+use shared::SharedData;
+
+bind_interrupts!(struct Irqs {
+    USART2 => embassy_stm32::usart::InterruptHandler<embassy_stm32::peripherals::USART2>;
+    USART3 => embassy_stm32::usart::InterruptHandler<embassy_stm32::peripherals::USART3>;
+});
+
+static SHARED_POSITIONS: SharedData<POSITION_COUNT> = SharedData::new();
+static SHARED_COMMANDS: SharedData<COMMAND_COUNT> = SharedData::new();
+static SHARED_FORCE: SharedData<FORCE_COUNT> = SharedData::new();
+
+#[embassy_executor::main]
+async fn main(_spawner: Spawner) {
+    let mut config = Config::default();
+    {
+        use embassy_stm32::rcc::*;
+        config.rcc.pll = Some(Pll {
+            source: PllSource::HSI,
+            prediv: PllPreDiv::DIV4,
+            mul: PllMul::MUL85,
+            divp: None,
+            divq: None,
+            // Main system clock at 170 MHz
+            divr: Some(PllRDiv::DIV2),
+        });
+        config.rcc.mux.adc12sel = mux::Adcsel::SYS;
+        config.rcc.sys = Sysclk::PLL1_R;
+        config.rcc.ls = LsConfig::default_lsi();
+    }
+    let p = embassy_stm32::init(config);
+
+    // USART3: PC link (telemetry sender + command reader).
+    let mut uart3_config = UartConfig::default();
+    uart3_config.baudrate = 115_200;
+    let uart3 = Uart::new(
+        p.USART3,
+        p.PC11,      // RX pin (PC -> MCU)
+        p.PB10,      // TX pin (MCU -> PC)
+        Irqs,
+        p.DMA1_CH6,  // TX DMA channel
+        p.DMA1_CH5,  // RX DMA channel
+        uart3_config,
+    )
+    .unwrap();
+
+    let (tx3, rx3) = uart3.split();
+    _spawner
+        .spawn(telemetry_sender::telemetry_sender_task(tx3, &SHARED_POSITIONS))
+        .unwrap();
+    _spawner
+        .spawn(command_reader::command_reader_task(rx3, &SHARED_COMMANDS))
+        .unwrap();
+
+    // USART2: C0 force reader (RX only).
+    let mut uart2_config = UartConfig::default();
+    uart2_config.baudrate = 115_200;
+
+    // rx is pa15, tx is pb3 (not used), uart2 instance
+    let uart2_rx = UartRx::new(p.USART2, Irqs, p.PA15, p.DMA1_CH1, uart2_config).unwrap();
+    _spawner
+        .spawn(c0_reader::c0_reader_task(uart2_rx, &SHARED_FORCE))
+        .unwrap();
+
+    // ADC + position reader (G4 pots).
+    // NOTE: PA2/PA3 are also USART2 pins; if UART2 is enabled, move those ADC channels.
+    let dma = p.DMA1_CH2;
+    let mut adc = Adc::new(p.ADC1);
+    adc.set_sample_time(SampleTime::CYCLES640_5);
+    // Keep this list aligned with POSITION_COUNT.
+    let pos_ch = [
+        p.PA0.degrade_adc(),
+        p.PA1.degrade_adc(),
+        p.PA2.degrade_adc(),
+        p.PA3.degrade_adc(),
+        p.PF0.degrade_adc(),
+        p.PB1.degrade_adc(),
+        p.PB11.degrade_adc(),
+        p.PB0.degrade_adc(),
+    ];
+    _spawner
+        .spawn(position_reader::position_reader_task(adc, dma, pos_ch, &SHARED_POSITIONS))
+        .unwrap();
+
+    let mut latest_cmd = [0u16; COMMAND_COUNT];
+    let mut latest_force = [0u16; FORCE_COUNT];
+    loop {
+        if SHARED_COMMANDS.read_frame(&mut latest_cmd) {
+            defmt::info!("Commands updated (seq={})", SHARED_COMMANDS.seq());
+        }
+        if SHARED_FORCE.read_frame(&mut latest_force) {
+            defmt::info!("Force updated (seq={})", SHARED_FORCE.seq());
+        }
+        Timer::after(Duration::from_millis(200)).await;
+    }
+}

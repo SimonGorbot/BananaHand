@@ -30,6 +30,9 @@ Run (combined)
 ros2 launch banana_hand_tracking vision_teleop.launch.py
 ```
 
+Landmarks topic
+- `/hand/landmarks` (`banana_interfaces/msg/HandState`)
+
 Non-ROS MVP (MediaPipe)
 ```
 python3 /home/dbhaumik/BananaHand/software/ros/src/banana_hand_tracking/scripts/mediapipe_preview.py

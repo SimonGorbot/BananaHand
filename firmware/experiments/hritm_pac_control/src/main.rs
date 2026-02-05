@@ -3,6 +3,7 @@
 
 mod fmt;
 mod hrtim_pwm;
+mod hrtim_pwm_v2;
 
 #[cfg(not(feature = "defmt"))]
 use panic_halt as _;
@@ -126,6 +127,28 @@ async fn main(_spawner: Spawner) {
     unwrap!(manager.set_timf_ch2_dc(100)); // 100% duty cycle doesn't work (output is 0%). Still trying to figure out why.
     unwrap!(manager.enable_timf_ch1());
     unwrap!(manager.enable_timf_ch2());
+
+    // let (tim_a, _b) = hrtim_pwm_v2::HrtimCore::new()
+    //     .add_tim_a_ch1_ch2(*p.PA8, *p.PA9, period, hrtim_pwm_v2::Prescaler::DIV32) // or with_tim_a_ch2 / with_tim_a_ch1_ch2
+    //     .split();
+
+    // let tim_a = tim_a.activate().unwrap();
+    // tim_a.ch1_set_dc_percent(20);
+    // tim_a.ch1_en();
+
+    // tim_a.ch2_set_dc_percent(50);
+    // tim_a.ch2_en();
+
+    // or
+
+    let (tim_a, tim_b) = hrtim_pwm_v2::HrtimCore::new()
+        .add_tim_a_ch1_ch2(*p.PA8, *p.PA9, period, hrtim_pwm_v2::Prescaler::DIV32) // or with_tim_a_ch2 / with_tim_a_ch1_ch2
+        .split_active()
+        .unwrap();
+    tim_a.ch1_set_dc_percent(20);
+    tim_a.ch2_set_dc_percent(40);
+    tim_a.ch1_en();
+    tim_a.ch2_en();
 
     loop {
         info!("Hello, World!");
